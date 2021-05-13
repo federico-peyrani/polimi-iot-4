@@ -1,0 +1,10 @@
+.DS_Store
+.cvsignore
+
+build
+simbuild
+TOSSIM.py
+TOSSIM.pyc
+_TOSSIMmodule.so
+app.xml
+typescript
