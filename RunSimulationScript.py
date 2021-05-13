@@ -27,12 +27,12 @@ print "    using noise file:",modelfile;
 print "Initializing simulator....";
 t.init();
 
-# simulation_outfile = "simulation.txt";
-# print "Saving sensors simulation output to:", simulation_outfile;
-# simulation_out = open(simulation_outfile, "w");
+simulation_outfile = "output/simulation.txt";
+print "Saving sensors simulation output to:", simulation_outfile;
+simulation_out = open(simulation_outfile, "w");
 
-# out = open(simulation_outfile, "w");
-out = sys.stdout;
+out = open(simulation_outfile, "w");
+# out = sys.stdout;
 
 # Add debug channel
 t.addChannel("boot", out);
@@ -42,7 +42,7 @@ t.addChannel("resp", out);
 
 print "Creating node 1...";
 node1 = t.getNode(1);
-time1 = mote_1_start * t.ticksPerSecond(); #instant at which each node should be turned on
+time1 = mote_1_start * t.ticksPerSecond();
 node1.bootAtTime(time1);
 print ">>>Will boot at time",  time1 / t.ticksPerSecond(), "[sec]";
 

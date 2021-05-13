@@ -13,68 +13,98 @@ module SendAckC @safe() {
     interface AMSend;
     interface SplitControl as AMControl;
     interface Packet;
+
+    interface PacketAcknowledgements;
   }
 
 } implementation {
 
+  /** Global counter incremented after each outgoing message. */
   uint16_t counter = 0;
+
+  /**
+   * Counter used to store the received counter value in an incoming message,
+   * so that it can be relayed back in a RESP message. Kept separate from
+   * [counter] so that nodes could theoretically both send and receive REQ and
+   * RESP messagge with the same underlying policy.
+   */
+  uint16_t received_counter = 0;
+
   message_t packet;
 
-  void sendReq();
-  void sendResp();
+  /**
+   * Sends a standard message of type msg_t (defined in SendAck.h), inflating
+   * its content with the provided parameters, always requiring an ACK to be
+   * sent back, and automatically routing the packet to the other node in the
+   * network (i.e. 1 --> 2 and 2 --> 1).
+   */
+  void send(uint8_t msg_type, uint16_t counter_value, nx_uint16_t value) {
+    msg_t* msg;
+    am_addr_t addr;
 
-  //***************** Send request function ********************//
-  void sendReq() {
-  	/* This function is called when we want to send a request
-  	 *
-  	 * STEPS:
-  	 * 1. Prepare the msg
-  	 * 2. Set the ACK flag for the message using the PacketAcknowledgements interface
-  	 *     (read the docs)
-  	 * 3. Send an UNICAST message to the correct node
-  	 * X. Use debug statements showing what's happening (i.e. message fields)
-  	 */
     // build message
-    msg_t* msg = (msg_t*) call Packet.getPayload(&packet, sizeof(msg_t));
+    msg = (msg_t*) call Packet.getPayload(&packet, sizeof(msg_t));
     if (msg == NULL) {
       return;
     }
 
     // inflate message payload
-    msg->msg_type = REQ;
-    msg->msg_counter = counter;
+    msg->msg_type = msg_type;
+    msg->msg_counter = counter_value;
+    msg->value = value;
 
-    // send message
-    call AMSend.send(AM_BROADCAST_ADDR, &packet, sizeof(msg_t));
+    call PacketAcknowledgements.requestAck(&packet);
+
+    // Send message in unicast, using TOS_NODE_ID to retrieve the destination
+    // address. Using a switch statement makes it more suited to do more complex
+    // routing if motes where to be added to the network.
+    switch (TOS_NODE_ID) {
+      case 1:
+        addr = 2;
+        break;
+      case 2:
+        addr = 1;
+        break;
+    }
+
+    call AMSend.send(addr, &packet, sizeof(msg_t));
+  }
+
+  void sendReq() {
+    send(REQ, counter, 0);
     dbg("req", "Sending request\n");
   }
 
-  //****************** Task send response *****************//
   void sendResp() {
-     call Read.read();
+    call Read.read();
+    dbg("resp", "Reading sensor value\n");
   }
 
-  //***************** Boot interface ********************//
   event void Boot.booted() {
   	dbg("boot", "Application booted\n");
     call AMControl.start();
   }
 
-  //***************** SplitControl interface ********************//
+  event void Read.readDone(error_t result, uint16_t data) {
+    send(RESP, received_counter, data);
+    dbg("resp", "Sending response \n\tcounter: %u\n\tvalue: %u\n", counter, data);
+  }
+
   event void AMControl.startDone(error_t err) {
     dbg("boot", "Start done: ");
 
     if (err != SUCCESS) {
       dbg_clear("boot", "ERROR\n");
       call AMControl.start();
-    } else {
-      dbg_clear("boot", "SUCCESS\n");
+      return;
+    }
 
-      // if node is number 1, also start the timer
-      if (TOS_NODE_ID == 1) {
-        call Timer.startPeriodic(1000);
-        dbg_clear("boot", "\tStarted timer\n");
-      }
+    dbg_clear("boot", "SUCCESS\n");
+
+    // if node is number 1, also start the timer
+    if (TOS_NODE_ID == 1) {
+      call Timer.startPeriodic(1000);
+      dbg_clear("boot", "\tStarted timer\n");
     }
   }
 
@@ -82,74 +112,44 @@ module SendAckC @safe() {
     // skip
   }
 
-  //***************** MilliTimer interface ********************//
   event void Timer.fired() {
     sendReq();
   }
 
-  //********************* AMSend interface ****************//
   event void AMSend.sendDone(message_t* buf, error_t err) {
-	/* This event is triggered when a message is sent
-	 *
-	 * STEPS:
-	 * 1. Check if the packet is sent
-	 * 2. Check if the ACK is received (read the docs)
-	 * 2a. If yes, stop the timer. The program is done
-	 * 2b. Otherwise, send again the request
-	 * X. Use debug statements showing what's happening (i.e. message fields)
-	 */
-   counter++;
-   dbg("radio", "Send done\n");
+    bool acked;
+
+    acked = call PacketAcknowledgements.wasAcked(buf);
+
+    dbg("radio", "Send done\n");
+    dbg_clear("radio", "\t%s\n", acked ? "Acked" : "Not acked");
+
+    if (acked && call Timer.isRunning()) {
+      dbg_clear("radio", "\tStopping timer\n");
+      call Timer.stop();
+    }
+
+    // increment the counter at each sent message
+    counter++;
   }
 
-  //***************************** Receive interface *****************//
   event message_t* Receive.receive(message_t* buf, void* payload, uint8_t len) {
     dbg("radio", "Received message\n");
+
     if (len == sizeof(msg_t)) {
       msg_t* msg = (msg_t*) payload;
+
+      // print debug info about the message
       dbg_clear("radio", "\ttype: %s\n", msg->msg_type == REQ ? "REQ" : "RESP");
       dbg_clear("radio", "\tcounter: %u\n", msg->msg_counter);
       dbg_clear("radio", "\tvalue: %u\n", msg->value);
 
       if (msg->msg_type == REQ) {
-        counter = msg->msg_counter;
+        received_counter = msg->msg_counter;
         sendResp();
-      } else {
-        call Timer.stop();
       }
     }
-	/* This event is triggered when a message is received
-	 *
-	 * STEPS:
-	 * 1. Read the content of the message
-	 * 2. Check if the type is request (REQ)
-	 * 3. If a request is received, send the response
-	 * X. Use debug statements showing what's happening (i.e. message fields)
-	 */
+
     return buf;
-  }
-
-  //************************* Read interface **********************//
-  event void Read.readDone(error_t result, uint16_t data) {
-	/* This event is triggered when the fake sensor finish to read (after a Read.read())
-	 *
-	 * STEPS:
-	 * 1. Prepare the response (RESP)
-	 * 2. Send back (with a unicast message) the response
-	 * X. Use debug statement showing what's happening (i.e. message fields)
-	 */
-   msg_t* msg = (msg_t*) call Packet.getPayload(&packet, sizeof(msg_t));
-   if (msg == NULL) {
-     return;
-   }
-
-   // inflate message payload
-   msg->msg_type = RESP;
-   msg->msg_counter = counter;
-   msg->value = data;
-
-   // send message
-   call AMSend.send(AM_BROADCAST_ADDR, &packet, sizeof(msg_t));
-   dbg("resp", "Sending response \n\tcounter: %u\n\tvalue: %u\n", counter, data);
   }
 }

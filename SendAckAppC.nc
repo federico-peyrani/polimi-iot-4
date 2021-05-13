@@ -29,4 +29,6 @@ implementation {
   App.AMSend -> AMSenderC;
   App.AMControl -> ActiveMessageC;
   App.Packet -> AMSenderC;
+
+  App.PacketAcknowledgements -> ActiveMessageC;
 }

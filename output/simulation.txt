@@ -1,0 +1,38 @@
+DEBUG (1): Application booted
+DEBUG (1): Start done: SUCCESS
+	Started timer
+DEBUG (1): Sending request
+DEBUG (1): Send done
+	Not acked
+DEBUG (1): Sending request
+DEBUG (1): Send done
+	Not acked
+DEBUG (1): Sending request
+DEBUG (1): Send done
+	Not acked
+DEBUG (1): Sending request
+DEBUG (1): Send done
+	Not acked
+DEBUG (1): Sending request
+DEBUG (1): Send done
+	Not acked
+DEBUG (2): Application booted
+DEBUG (2): Start done: SUCCESS
+DEBUG (1): Sending request
+DEBUG (2): Received message
+	type: REQ
+	counter: 5
+	value: 0
+DEBUG (2): Reading sensor value
+DEBUG (1): Send done
+	Acked
+	Stopping timer
+DEBUG (2): Sending response 
+	counter: 0
+	value: 50421
+DEBUG (1): Received message
+	type: RESP
+	counter: 5
+	value: 50421
+DEBUG (2): Send done
+	Acked
