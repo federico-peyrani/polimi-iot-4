@@ -34,5 +34,6 @@ DEBUG (1): Received message
 	type: RESP
 	counter: 5
 	value: 50421
+DEBUG (1): Response matches counter
 DEBUG (2): Send done
 	Acked

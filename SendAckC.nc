@@ -17,7 +17,9 @@ module SendAckC @safe() {
     interface PacketAcknowledgements;
   }
 
-} implementation {
+}
+
+implementation {
 
   /** Global counter incremented after each outgoing message. */
   uint16_t counter = 0;
@@ -26,7 +28,7 @@ module SendAckC @safe() {
    * Counter used to store the received counter value in an incoming message,
    * so that it can be relayed back in a RESP message. Kept separate from
    * [counter] so that nodes could theoretically both send and receive REQ and
-   * RESP messagge with the same underlying policy.
+   * RESP message with the same underlying policy.
    */
   uint16_t received_counter = 0;
 
@@ -144,9 +146,17 @@ module SendAckC @safe() {
       dbg_clear("radio", "\tcounter: %u\n", msg->msg_counter);
       dbg_clear("radio", "\tvalue: %u\n", msg->value);
 
-      if (msg->msg_type == REQ) {
-        received_counter = msg->msg_counter;
-        sendResp();
+      switch (msg->msg_type) {
+        case REQ:
+          received_counter = msg->msg_counter;
+          sendResp();
+          break;
+        case RESP:
+          // Just for debugging purposes, we print whether the local counter corresponds to the value of the
+          // counter received. Since the counter is incremented -after- sending a message we must decrease its value
+          // by 1 before comparing it.
+          dbg("resp", "Response %s counter\n", msg->msg_counter == counter - 1 ? "matches" : "doesn't match");
+          break;
       }
     }
 
